@@ -1,121 +1,292 @@
 <?xml version="1.0"?>
 <!--
-  ========================================================================
-  ROBOT: Drone X (Quadcopter) - Base para enjambre de drones
-  Autor: TFG Control de Enjambres - FP ROS2
-  Descripción:
-    Modelo XACRO de un cuadricóptero en configuración "X" con:
-    - Cuerpo central, brazos, motores, hélices, patas y LED superior.
-    - Materiales diferenciados por zonas (frontal/trasero).
-    - Inercias simples para simulación ligera.
-    - Diseñado para ser usado en Gazebo y RViz.
-    - El LED central puede cambiar de color mediante un tópico ROS2.
-  ========================================================================
+  dron_base.xacro
+  ============================================================================-
+  Modelo Xacro/URDF de un dron cuadricóptero para ROS 2 y RViz.
+
+  Objetivo del fichero:
+  - Dibujar el cuerpo central del dron.
+  - Dibujar los cuatro brazos diagonales.
+  - Dibujar los cuatro motores.
+  - Dibujar las hélices de cada motor.
+  - Dibujar un LED superior de estado.
+  - Dibujar cuatro patas reales de aterrizaje, una en cada esquina del cuerpo.
+  - Permitir instanciar varios drones iguales usando un prefijo distinto.
+
+  Por qué usamos prefix:
+  ============================================================================-
+  Si lanzamos seis drones en RViz, todos tendrían nombres de enlaces repetidos:
+  base_link, status_led_link, front_left_motor_link, etc.
+
+  Eso genera conflictos en TF. Por eso todos los nombres de links y joints usan:
+
+      ${prefix}
+
+  De esta forma, al lanzar el dron con prefix:=drone1_, se generan nombres como:
+
+      drone1_base_link
+      drone1_status_led_link
+      drone1_front_left_motor_link
+
+  y con prefix:=drone2_:
+
+      drone2_base_link
+      drone2_status_led_link
+      drone2_front_left_motor_link
+
+  Así cada dron tiene su propio árbol TF.
+
+  Nota sobre el LED:
+  ============================================================================-
+  Este fichero dibuja un LED físico fijo sobre el cuerpo del dron.
+  Para cambiar dinámicamente el color desde ROS 2, en la versión RViz es más
+  sencillo usar MarkerArray desde swarm_visualizer.py. El LED del Xacro queda
+  como referencia visual del modelo.
 -->
 
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="drone_x_led">
 
-  <!-- ==================================================================== -->
-  <!-- 1. PROPIEDADES GEOMÉTRICAS Y DE POSICIONAMIENTO                      -->
-  <!-- ==================================================================== -->
+  <!-- ======================================================================= -->
+  <!-- 1. ARGUMENTOS DEL MODELO                                                -->
+  <!-- ======================================================================= -->
 
-  <!-- Constantes auxiliares -->
-  <xacro:property name="diag" value="0.70710678"/>  <!-- sqrt(2)/2, útil para diagonales -->
+  <!--
+    prefix permite crear varios drones iguales sin que se repitan los nombres
+    de los links y joints.
 
-  <!-- Dimensiones del cuerpo principal -->
-  <xacro:property name="body_l" value="0.16"/>
-  <xacro:property name="body_w" value="0.16"/>
-  <xacro:property name="body_h" value="0.045"/>
+    Ejemplos:
+      prefix:=drone1_
+      prefix:=drone2_
+      prefix:=drone3_
+  -->
+  <xacro:arg name="prefix" default=""/>
+  <xacro:property name="prefix" value="$(arg prefix)"/>
 
-  <!-- Dimensiones de los brazos -->
-  <xacro:property name="arm_l" value="0.20"/>
-  <xacro:property name="arm_w" value="0.014"/>
-  <xacro:property name="arm_h" value="0.014"/>
-  <xacro:property name="arm_inside" value="0.025"/>  <!-- Distancia desde el cuerpo hasta inicio del brazo -->
 
-  <!-- Dimensiones del motor -->
-  <xacro:property name="motor_r" value="0.022"/>
-  <xacro:property name="motor_h" value="0.028"/>
+  <!-- ======================================================================= -->
+  <!-- 2. CONSTANTES GEOMÉTRICAS GENERALES                                     -->
+  <!-- ======================================================================= -->
 
-  <!-- Dimensiones de la hélice -->
-  <xacro:property name="prop_l" value="0.15"/>
-  <xacro:property name="prop_w" value="0.016"/>
-  <xacro:property name="prop_h" value="0.005"/>
-  <xacro:property name="prop_hub_r" value="0.010"/>
-  <xacro:property name="prop_hub_h" value="0.008"/>
+  <!--
+    Valor aproximado de cos(45º) y sin(45º).
+    Se usa para colocar los brazos en diagonal, formando una X.
+  -->
+  <xacro:property name="diag" value="0.70710678"/>
 
-  <!-- Patas -->
-  <xacro:property name="leg_r" value="0.006"/>
-  <xacro:property name="leg_h" value="0.10"/>
 
-  <!-- LED central -->
-  <xacro:property name="led_r" value="0.012"/>
+  <!-- ======================================================================= -->
+  <!-- 3. DIMENSIONES DEL CUERPO CENTRAL                                       -->
+  <!-- ======================================================================= -->
 
-  <!-- Cálculos derivados -->
-  <!-- Desplazamiento del centro del brazo respecto a la esquina del cuerpo -->
+  <!--
+    El cuerpo central se representa como una caja.
+
+    Ejes usados en RViz/URDF:
+      X: delante / atrás
+      Y: izquierda / derecha
+      Z: arriba / abajo
+  -->
+  <xacro:property name="body_l" value="0.16"/>   <!-- Longitud del cuerpo en X -->
+  <xacro:property name="body_w" value="0.16"/>   <!-- Anchura del cuerpo en Y  -->
+  <xacro:property name="body_h" value="0.045"/>  <!-- Altura del cuerpo en Z   -->
+
+
+  <!-- ======================================================================= -->
+  <!-- 4. DIMENSIONES DE LOS BRAZOS                                            -->
+  <!-- ======================================================================= -->
+
+  <!--
+    Cada brazo se representa como una barra rectangular.
+    Los brazos salen desde el cuerpo hacia las cuatro esquinas.
+  -->
+  <xacro:property name="arm_l" value="0.20"/>       <!-- Longitud de cada brazo -->
+  <xacro:property name="arm_w" value="0.014"/>      <!-- Grosor lateral del brazo -->
+  <xacro:property name="arm_h" value="0.014"/>      <!-- Altura del brazo -->
+  <xacro:property name="arm_inside" value="0.025"/> <!-- Parte del brazo que entra visualmente en el cuerpo -->
+
+  <!--
+    arm_center_offset calcula cuánto hay que desplazar el centro de cada brazo
+    para que quede correctamente unido al cuerpo y orientado en diagonal.
+  -->
   <xacro:property name="arm_center_offset" value="${(arm_l/2.0 - arm_inside) * diag}"/>
 
-  <!-- Altura a la que se apoyan los brazos sobre el cuerpo -->
+  <!--
+    Altura a la que se colocan los brazos.
+    Se sitúan encima del cuerpo central, no atravesando su centro.
+  -->
   <xacro:property name="arm_z" value="${body_h/2.0 + arm_h/2.0}"/>
 
-  <!-- ==================================================================== -->
-  <!-- 2. MATERIALES (VISUALIZACIÓN EN RViz Y GAZEBO)                      -->
-  <!-- ==================================================================== -->
 
-  <material name="body_mat">
-    <color rgba="0.10 0.10 0.10 1.0"/>  <!-- Cuerpo negro mate -->
-  </material>
+  <!-- ======================================================================= -->
+  <!-- 5. DIMENSIONES DE LOS MOTORES                                           -->
+  <!-- ======================================================================= -->
 
-  <material name="arm_mat">
-    <color rgba="0.70 0.70 0.70 1.0"/>  <!-- Brazos gris plata -->
-  </material>
-
-  <material name="motor_mat">
-    <color rgba="0.12 0.12 0.12 1.0"/>  <!-- Motores negros -->
-  </material>
-
-  <material name="front_prop_mat">
-    <color rgba="0.90 0.22 0.22 1.0"/>  <!-- Hélices delanteras rojas -->
-  </material>
-
-  <material name="rear_prop_mat">
-    <color rgba="0.20 0.35 0.95 1.0"/>  <!-- Hélices traseras azules -->
-  </material>
-
-  <material name="leg_mat">
-    <color rgba="0.80 0.80 0.80 1.0"/>  <!-- Patas gris claro -->
-  </material>
-
-  <!-- Material por defecto para el LED (se puede sobrescribir desde Python) -->
-  <material name="led_green_mat">
-    <color rgba="0.10 1.00 0.10 1.0"/>  <!-- Verde brillante -->
-  </material>
-
-  <!-- ==================================================================== -->
-  <!-- 3. MACRO DE INERCIA SIMPLIFICADA                                     -->
-  <!-- ==================================================================== -->
   <!--
-    Para simulación ligera se usa una inercia fija.
-    En un proyecto real se podría calcular con la geometría.
+    Cada motor se representa como un cilindro situado al final de cada brazo.
+  -->
+  <xacro:property name="motor_r" value="0.022"/>  <!-- Radio del cilindro del motor -->
+  <xacro:property name="motor_h" value="0.028"/>  <!-- Altura del cilindro del motor -->
+
+
+  <!-- ======================================================================= -->
+  <!-- 6. DIMENSIONES DE LAS HÉLICES                                           -->
+  <!-- ======================================================================= -->
+
+  <!--
+    Cada hélice se representa de forma sencilla:
+      - un buje central cilíndrico,
+      - dos palas rectangulares cruzadas a 90 grados.
+
+    No buscamos aerodinámica real, sino una representación visual clara.
+  -->
+  <xacro:property name="prop_l" value="0.15"/>      <!-- Longitud de cada pala -->
+  <xacro:property name="prop_w" value="0.016"/>     <!-- Anchura de cada pala -->
+  <xacro:property name="prop_h" value="0.005"/>     <!-- Grosor de cada pala -->
+  <xacro:property name="prop_hub_r" value="0.010"/> <!-- Radio del buje central -->
+  <xacro:property name="prop_hub_h" value="0.008"/> <!-- Altura del buje central -->
+
+
+  <!-- ======================================================================= -->
+  <!-- 7. DIMENSIONES DE LAS CUATRO PATAS DE ATERRIZAJE                        -->
+  <!-- ======================================================================= -->
+
+  <!--
+    En esta versión NO usamos dos cilindros largos como patines.
+
+    En su lugar se dibujan cuatro patas independientes:
+      - front_left_leg_link
+      - front_right_leg_link
+      - rear_left_leg_link
+      - rear_right_leg_link
+
+    Cada pata tiene:
+      - un cilindro vertical estrecho,
+      - una pequeña base circular inferior para simular el apoyo en el suelo.
+  -->
+  <xacro:property name="leg_r" value="0.006"/>       <!-- Radio de cada pata vertical -->
+  <xacro:property name="leg_h" value="0.090"/>       <!-- Altura de cada pata vertical -->
+  <xacro:property name="foot_r" value="0.018"/>      <!-- Radio del pequeño pie inferior -->
+  <xacro:property name="foot_h" value="0.008"/>      <!-- Altura del pequeño pie inferior -->
+
+  <!--
+    Posición de las patas respecto al centro del cuerpo.
+    Se colocan cerca de las cuatro esquinas inferiores del cuerpo.
+  -->
+  <xacro:property name="leg_x" value="0.055"/>       <!-- Separación de la pata respecto al centro en X -->
+  <xacro:property name="leg_y" value="0.055"/>       <!-- Separación de la pata respecto al centro en Y -->
+
+
+  <!-- ======================================================================= -->
+  <!-- 8. DIMENSIONES DEL LED DE ESTADO                                        -->
+  <!-- ======================================================================= -->
+
+  <!--
+    El LED se representa como una esfera pequeña sobre la parte superior del dron.
+    En RViz, el cambio dinámico de color puede representarse mejor con MarkerArray.
+  -->
+  <xacro:property name="led_r" value="0.012"/>
+
+
+  <!-- ======================================================================= -->
+  <!-- 9. MATERIALES Y COLORES                                                 -->
+  <!-- ======================================================================= -->
+
+  <!--
+    Los materiales se aplican a las geometrías visuales.
+    rgba = rojo verde azul alfa
+    El alfa 1.0 indica que el objeto es totalmente opaco.
+  -->
+
+  <!-- Color oscuro para el cuerpo principal. -->
+  <material name="body_mat">
+    <color rgba="0.10 0.10 0.10 1.0"/>
+  </material>
+
+  <!-- Color gris para los brazos. -->
+  <material name="arm_mat">
+    <color rgba="0.70 0.70 0.70 1.0"/>
+  </material>
+
+  <!-- Color oscuro para los motores. -->
+  <material name="motor_mat">
+    <color rgba="0.12 0.12 0.12 1.0"/>
+  </material>
+
+  <!-- Color rojo para las hélices delanteras. Ayuda a identificar el frontal. -->
+  <material name="front_prop_mat">
+    <color rgba="0.90 0.22 0.22 1.0"/>
+  </material>
+
+  <!-- Color azul para las hélices traseras. Ayuda a identificar la parte trasera. -->
+  <material name="rear_prop_mat">
+    <color rgba="0.20 0.35 0.95 1.0"/>
+  </material>
+
+  <!-- Color gris claro para las patas de aterrizaje. -->
+  <material name="leg_mat">
+    <color rgba="0.80 0.80 0.80 1.0"/>
+  </material>
+
+  <!-- Color ligeramente más claro para los pies inferiores de apoyo. -->
+  <material name="foot_mat">
+    <color rgba="0.90 0.90 0.90 1.0"/>
+  </material>
+
+  <!-- Color base del LED físico dibujado en el Xacro. -->
+  <material name="led_green_mat">
+    <color rgba="0.10 1.00 0.10 1.0"/>
+  </material>
+
+
+  <!-- ======================================================================= -->
+  <!-- 10. MACRO DE INERCIA SIMPLE                                             -->
+  <!-- ======================================================================= -->
+
+  <!--
+    Esta macro añade una inercia sencilla a cada link.
+
+    En RViz la inercia no es importante para visualizar el modelo, pero en URDF
+    es recomendable que los links tengan masa e inercia si más adelante se desea
+    llevar el modelo a simulación física.
+
+    Los valores son simplificados y no buscan una simulación dinámica realista.
   -->
   <xacro:macro name="simple_inertial" params="mass">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <mass value="${mass}"/>
-      <inertia ixx="0.001" ixy="0.0" ixz="0.0"
-               iyy="0.001" iyz="0.0"
-               izz="0.001"/>
+      <inertia
+        ixx="0.001" ixy="0.0" ixz="0.0"
+        iyy="0.001" iyz="0.0"
+        izz="0.001"/>
     </inertial>
   </xacro:macro>
 
-  <!-- ==================================================================== -->
-  <!-- 4. CUERPO PRINCIPAL (base_link)                                      -->
-  <!-- ==================================================================== -->
+
+  <!-- ======================================================================= -->
+  <!-- 11. CUERPO CENTRAL DEL DRON                                             -->
+  <!-- ======================================================================= -->
+
   <!--
-    base_link es el marco de referencia central del dron.
-    Todos los demás elementos se anclan aquí.
+    base_link es el enlace principal del dron.
+
+    Todo el resto de piezas se conectan a base_link directa o indirectamente:
+      - brazos,
+      - motores,
+      - hélices,
+      - LED,
+      - patas.
+
+    Visual:
+      Dibuja una caja negra.
+
+    Collision:
+      Define una caja de colisión con la misma forma.
+
+    Inertial:
+      Añade una masa aproximada al cuerpo.
   -->
-  <link name="base_link">
+  <link name="${prefix}base_link">
     <visual>
       <geometry>
         <box size="${body_l} ${body_w} ${body_h}"/>
@@ -132,227 +303,423 @@
     <xacro:simple_inertial mass="1.2"/>
   </link>
 
-  <!-- ==================================================================== -->
-  <!-- 5. MACRO: MÓDULO BRAZO + MOTOR + HÉLICE (COMPLETO)                   -->
-  <!-- ==================================================================== -->
+
+  <!-- ======================================================================= -->
+  <!-- 12. MACRO PARA CREAR CADA BRAZO, MOTOR Y HÉLICE                         -->
+  <!-- ======================================================================= -->
+
   <!--
+    Esta macro crea de una sola vez todo el conjunto de una esquina del dron:
+
+      1. Brazo diagonal.
+      2. Motor al final del brazo.
+      3. Buje central de la hélice.
+      4. Primera pala de la hélice.
+      5. Segunda pala de la hélice, girada 90 grados.
+
     Parámetros:
-      name: Identificador único (front_left, front_right, etc.)
-      x, y: Posición en el plano XY respecto a base_link
-      yaw: Rotación del brazo (para configuración X o +)
-      prop_material: Material a aplicar en las hélices (frontal/trasero)
+      name:
+        Nombre lógico de la esquina. Ejemplos:
+          front_left
+          front_right
+          rear_left
+          rear_right
+
+      x, y:
+        Posición del centro del brazo respecto a base_link.
+
+      yaw:
+        Giro del brazo alrededor del eje Z.
+        Esto permite colocar el brazo en diagonal.
+
+      prop_material:
+        Material/color de la hélice.
+        Las delanteras son rojas y las traseras azules.
   -->
   <xacro:macro name="arm_module" params="name x y yaw prop_material">
 
-    <!-- BRAZO -->
-    <link name="${name}_arm_link">
+    <!-- ==================================================================- -->
+    <!-- 12.1. Brazo diagonal                                                 -->
+    <!-- ==================================================================- -->
+
+    <!--
+      Dibuja una barra rectangular que sale del cuerpo hacia una esquina.
+      La barra está orientada mediante el yaw indicado en el joint.
+    -->
+    <link name="${prefix}${name}_arm_link">
       <visual>
         <geometry>
           <box size="${arm_l} ${arm_w} ${arm_h}"/>
         </geometry>
         <material name="arm_mat"/>
       </visual>
+
       <collision>
         <geometry>
           <box size="${arm_l} ${arm_w} ${arm_h}"/>
         </geometry>
       </collision>
+
       <xacro:simple_inertial mass="0.10"/>
     </link>
 
-    <joint name="base_to_${name}_arm" type="fixed">
-      <parent link="base_link"/>
-      <child link="${name}_arm_link"/>
+    <!--
+      Une el brazo al cuerpo principal.
+      El giro yaw coloca el brazo en diagonal.
+    -->
+    <joint name="${prefix}base_to_${name}_arm" type="fixed">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}${name}_arm_link"/>
       <origin xyz="${x} ${y} ${arm_z}" rpy="0 0 ${yaw}"/>
     </joint>
 
-    <!-- MOTOR -->
-    <link name="${name}_motor_link">
+
+    <!-- ==================================================================- -->
+    <!-- 12.2. Motor                                                          -->
+    <!-- ==================================================================- -->
+
+    <!--
+      Dibuja el motor como un cilindro vertical en el extremo exterior del brazo.
+    -->
+    <link name="${prefix}${name}_motor_link">
       <visual>
         <geometry>
           <cylinder radius="${motor_r}" length="${motor_h}"/>
         </geometry>
         <material name="motor_mat"/>
       </visual>
+
       <collision>
         <geometry>
           <cylinder radius="${motor_r}" length="${motor_h}"/>
         </geometry>
       </collision>
+
       <xacro:simple_inertial mass="0.08"/>
     </link>
 
-    <joint name="${name}_arm_to_motor" type="fixed">
-      <parent link="${name}_arm_link"/>
-      <child link="${name}_motor_link"/>
+    <!--
+      Une el motor al extremo del brazo.
+      Como el motor depende del frame del brazo, su posición local se indica
+      respecto al centro del brazo.
+    -->
+    <joint name="${prefix}${name}_arm_to_motor" type="fixed">
+      <parent link="${prefix}${name}_arm_link"/>
+      <child link="${prefix}${name}_motor_link"/>
       <origin xyz="${arm_l/2.0 - motor_r/2.0} 0 ${arm_h/2.0 + motor_h/2.0}" rpy="0 0 0"/>
     </joint>
 
-    <!-- CUBO DE LA HÉLICE (HUB) -->
-    <link name="${name}_hub_link">
+
+    <!-- ==================================================================- -->
+    <!-- 12.3. Buje central de la hélice                                      -->
+    <!-- ==================================================================- -->
+
+    <!--
+      Dibuja el pequeño cilindro central sobre el motor.
+      Este buje sirve como punto visual donde se cruzan las palas.
+    -->
+    <link name="${prefix}${name}_hub_link">
       <visual>
         <geometry>
           <cylinder radius="${prop_hub_r}" length="${prop_hub_h}"/>
         </geometry>
         <material name="${prop_material}"/>
       </visual>
+
       <collision>
         <geometry>
           <cylinder radius="${prop_hub_r}" length="${prop_hub_h}"/>
         </geometry>
       </collision>
+
       <xacro:simple_inertial mass="0.01"/>
     </link>
 
-    <joint name="${name}_motor_to_hub" type="fixed">
-      <parent link="${name}_motor_link"/>
-      <child link="${name}_hub_link"/>
+    <!-- Une el buje de la hélice a la parte superior del motor. -->
+    <joint name="${prefix}${name}_motor_to_hub" type="fixed">
+      <parent link="${prefix}${name}_motor_link"/>
+      <child link="${prefix}${name}_hub_link"/>
       <origin xyz="0 0 ${motor_h/2.0 + prop_hub_h/2.0}" rpy="0 0 0"/>
     </joint>
 
-    <!-- PALA 1 (horizontal) -->
-    <link name="${name}_blade1_link">
+
+    <!-- ==================================================================- -->
+    <!-- 12.4. Primera pala de la hélice                                      -->
+    <!-- ==================================================================- -->
+
+    <!--
+      Dibuja una pala rectangular horizontal.
+      Es una representación visual simplificada de la hélice.
+    -->
+    <link name="${prefix}${name}_blade1_link">
       <visual>
         <geometry>
           <box size="${prop_l} ${prop_w} ${prop_h}"/>
         </geometry>
         <material name="${prop_material}"/>
       </visual>
+
       <collision>
         <geometry>
           <box size="${prop_l} ${prop_w} ${prop_h}"/>
         </geometry>
       </collision>
+
       <xacro:simple_inertial mass="0.01"/>
     </link>
 
-    <joint name="${name}_hub_to_blade1" type="fixed">
-      <parent link="${name}_hub_link"/>
-      <child link="${name}_blade1_link"/>
+    <!-- Une la primera pala al buje central. -->
+    <joint name="${prefix}${name}_hub_to_blade1" type="fixed">
+      <parent link="${prefix}${name}_hub_link"/>
+      <child link="${prefix}${name}_blade1_link"/>
       <origin xyz="0 0 ${prop_hub_h/2.0 + prop_h/2.0}" rpy="0 0 0"/>
     </joint>
 
-    <!-- PALA 2 (vertical, rotada 90 grados) -->
-    <link name="${name}_blade2_link">
+
+    <!-- ==================================================================- -->
+    <!-- 12.5. Segunda pala de la hélice                                      -->
+    <!-- ==================================================================- -->
+
+    <!--
+      Dibuja una segunda pala rectangular.
+      Está girada 90 grados respecto a la primera para simular una hélice cruzada.
+    -->
+    <link name="${prefix}${name}_blade2_link">
       <visual>
         <geometry>
           <box size="${prop_l} ${prop_w} ${prop_h}"/>
         </geometry>
         <material name="${prop_material}"/>
       </visual>
+
       <collision>
         <geometry>
           <box size="${prop_l} ${prop_w} ${prop_h}"/>
         </geometry>
       </collision>
+
       <xacro:simple_inertial mass="0.01"/>
     </link>
 
-    <joint name="${name}_hub_to_blade2" type="fixed">
-      <parent link="${name}_hub_link"/>
-      <child link="${name}_blade2_link"/>
+    <!--
+      Une la segunda pala al buje central y la gira 90 grados en Z.
+      1.5708 radianes equivalen aproximadamente a 90 grados.
+    -->
+    <joint name="${prefix}${name}_hub_to_blade2" type="fixed">
+      <parent link="${prefix}${name}_hub_link"/>
+      <child link="${prefix}${name}_blade2_link"/>
       <origin xyz="0 0 ${prop_hub_h/2.0 + prop_h/2.0}" rpy="0 0 1.5708"/>
     </joint>
 
   </xacro:macro>
 
-  <!-- ==================================================================== -->
-  <!-- 6. MACRO: PATAS                                                      -->
-  <!-- ==================================================================== -->
-  <xacro:macro name="leg" params="name x y">
-    <link name="${name}_leg_link">
-      <visual>
+
+  <!-- ======================================================================= -->
+  <!-- 13. MACRO PARA CREAR UNA PATA DE ATERRIZAJE                             -->
+  <!-- ======================================================================= -->
+
+  <!--
+    Esta macro crea una pata independiente.
+
+    A diferencia de una solución con dos cilindros horizontales tipo patín,
+    esta versión crea cuatro apoyos verticales individuales.
+
+    Cada pata se compone visualmente de dos geometrías en el mismo link:
+
+      1. Cilindro vertical:
+        Representa la pata que baja desde el cuerpo.
+
+      2. Cilindro inferior más ancho:
+        Representa el pequeño pie de apoyo.
+
+    Parámetros:
+      name:
+        Nombre de la pata: front_left, front_right, rear_left o rear_right.
+
+      x, y:
+        Posición de la pata respecto al centro de base_link.
+  -->
+  <xacro:macro name="landing_leg" params="name x y">
+
+    <!--
+      Link completo de la pata.
+      El origen del link se coloca en el centro del cilindro vertical.
+    -->
+    <link name="${prefix}${name}_leg_link">
+
+      <!-- ==============================================================- -->
+      <!-- Cilindro vertical de la pata                                    -->
+      <!-- ==============================================================- -->
+      <!--
+        Como los cilindros URDF se dibujan por defecto alineados con el eje Z,
+        aquí NO giramos el cilindro. Así la pata queda vertical.
+      -->
+      <visual name="${prefix}${name}_vertical_leg_visual">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
           <cylinder radius="${leg_r}" length="${leg_h}"/>
         </geometry>
         <material name="leg_mat"/>
       </visual>
-      <collision>
+
+      <collision name="${prefix}${name}_vertical_leg_collision">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
           <cylinder radius="${leg_r}" length="${leg_h}"/>
         </geometry>
       </collision>
-      <xacro:simple_inertial mass="0.03"/>
+
+      <!-- ==============================================================- -->
+      <!-- Pie inferior de apoyo                                           -->
+      <!-- ==============================================================- -->
+      <!--
+        Este segundo cilindro es más ancho y va debajo de la pata.
+        Su función es que se vea claramente que hay cuatro apoyos separados.
+      -->
+      <visual name="${prefix}${name}_foot_visual">
+        <origin xyz="0 0 ${-leg_h/2.0 - foot_h/2.0}" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="${foot_r}" length="${foot_h}"/>
+        </geometry>
+        <material name="foot_mat"/>
+      </visual>
+
+      <collision name="${prefix}${name}_foot_collision">
+        <origin xyz="0 0 ${-leg_h/2.0 - foot_h/2.0}" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="${foot_r}" length="${foot_h}"/>
+        </geometry>
+      </collision>
+
+      <xacro:simple_inertial mass="0.035"/>
     </link>
 
-    <joint name="base_to_${name}_leg" type="fixed">
-      <parent link="base_link"/>
-      <child link="${name}_leg_link"/>
+    <!--
+      Joint fijo que une la pata al cuerpo.
+
+      La posición Z se calcula para que:
+        - la parte superior de la pata toque la cara inferior del cuerpo,
+        - la pata baje verticalmente hacia abajo.
+
+      Cara inferior del cuerpo:
+        z = -body_h/2
+
+      Centro de la pata vertical:
+        z = -body_h/2 - leg_h/2
+    -->
+    <joint name="${prefix}base_to_${name}_leg" type="fixed">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}${name}_leg_link"/>
       <origin xyz="${x} ${y} ${-body_h/2.0 - leg_h/2.0}" rpy="0 0 0"/>
     </joint>
+
   </xacro:macro>
 
-  <!-- ==================================================================== -->
-  <!-- 7. LED CENTRAL SUPERIOR (COLOR DINÁMICO)                             -->
-  <!-- ==================================================================== -->
+
+  <!-- ======================================================================= -->
+  <!-- 14. LED SUPERIOR DE ESTADO                                              -->
+  <!-- ======================================================================= -->
+
   <!--
-    NOTA PARA EL CONTROL DESDE PYTHON:
-    - Gazebo permite cambiar el color del LED publicando en el tópico:
-      /droneX/led/set_material
-    - También se puede modificar directamente el parámetro RGBA del material.
-    - RViz mostrará el color asignado en el URDF si se actualiza el material.
+    El LED se coloca sobre el cuerpo central.
+
+    En esta versión el material del LED en el Xacro es verde fijo.
+    Para cambiar colores por dron desde Python, se recomienda usar MarkerArray
+    en RViz mediante swarm_visualizer.py.
   -->
-  <link name="status_led_link">
+  <link name="${prefix}status_led_link">
     <visual>
       <geometry>
         <sphere radius="${led_r}"/>
       </geometry>
       <material name="led_green_mat"/>
     </visual>
+
     <collision>
       <geometry>
         <sphere radius="${led_r}"/>
       </geometry>
     </collision>
+
     <xacro:simple_inertial mass="0.01"/>
   </link>
 
-  <joint name="base_to_status_led" type="fixed">
-    <parent link="base_link"/>
-    <child link="status_led_link"/>
+  <!-- Une el LED a la parte superior del cuerpo. -->
+  <joint name="${prefix}base_to_status_led" type="fixed">
+    <parent link="${prefix}base_link"/>
+    <child link="${prefix}status_led_link"/>
     <origin xyz="0 0 ${body_h/2.0 + led_r}" rpy="0 0 0"/>
   </joint>
 
-  <!-- ==================================================================== -->
-  <!-- 8. INSTANCIACIÓN DE LOS 4 BRAZOS (Configuración en X)                -->
-  <!-- ==================================================================== -->
+
+  <!-- ======================================================================= -->
+  <!-- 15. INSTANCIACIÓN DE LOS CUATRO BRAZOS, MOTORES Y HÉLICES               -->
+  <!-- ======================================================================= -->
+
   <!--
-    Los brazos se colocan en las esquinas del cuerpo, rotados 45º.
-    - front_left  (delantero izquierdo)
-    - front_right (delantero derecho)
-    - rear_left   (trasero izquierdo)
-    - rear_right  (trasero derecho)
+    Aquí se crean los cuatro módulos de vuelo.
+
+    front_left:
+      Parte delantera izquierda.
+
+    front_right:
+      Parte delantera derecha.
+
+    rear_left:
+      Parte trasera izquierda.
+
+    rear_right:
+      Parte trasera derecha.
+
+    Las hélices delanteras se pintan en rojo y las traseras en azul para que
+    el usuario identifique fácilmente hacia dónde mira el dron.
   -->
-  <xacro:arm_module name="front_left"
-                    x="${ body_l/2.0 + arm_center_offset }"
-                    y="${ body_w/2.0 + arm_center_offset }"
-                    yaw="0.785398"
-                    prop_material="front_prop_mat"/>
+  <xacro:arm_module
+    name="front_left"
+    x="${ body_l/2.0 + arm_center_offset }"
+    y="${ body_w/2.0 + arm_center_offset }"
+    yaw="0.785398"
+    prop_material="front_prop_mat"/>
 
-  <xacro:arm_module name="front_right"
-                    x="${ body_l/2.0 + arm_center_offset }"
-                    y="${ -body_w/2.0 - arm_center_offset }"
-                    yaw="-0.785398"
-                    prop_material="front_prop_mat"/>
+  <xacro:arm_module
+    name="front_right"
+    x="${ body_l/2.0 + arm_center_offset }"
+    y="${ -body_w/2.0 - arm_center_offset }"
+    yaw="-0.785398"
+    prop_material="front_prop_mat"/>
 
-  <xacro:arm_module name="rear_left"
-                    x="${ -body_l/2.0 - arm_center_offset }"
-                    y="${ body_w/2.0 + arm_center_offset }"
-                    yaw="2.356194"
-                    prop_material="rear_prop_mat"/>
+  <xacro:arm_module
+    name="rear_left"
+    x="${ -body_l/2.0 - arm_center_offset }"
+    y="${ body_w/2.0 + arm_center_offset }"
+    yaw="2.356194"
+    prop_material="rear_prop_mat"/>
 
-  <xacro:arm_module name="rear_right"
-                    x="${ -body_l/2.0 - arm_center_offset }"
-                    y="${ -body_w/2.0 - arm_center_offset }"
-                    yaw="-2.356194"
-                    prop_material="rear_prop_mat"/>
+  <xacro:arm_module
+    name="rear_right"
+    x="${ -body_l/2.0 - arm_center_offset }"
+    y="${ -body_w/2.0 - arm_center_offset }"
+    yaw="-2.356194"
+    prop_material="rear_prop_mat"/>
 
-  <!-- ==================================================================== -->
-  <!-- 9. INSTANCIACIÓN DE LAS 4 PATAS                                     -->
-  <!-- ==================================================================== -->
-  <xacro:leg name="front_left"  x="0.05"  y="0.05"/>
-  <xacro:leg name="front_right" x="0.05"  y="-0.05"/>
-  <xacro:leg name="rear_left"   x="-0.05" y="0.05"/>
-  <xacro:leg name="rear_right"  x="-0.05" y="-0.05"/>
+
+  <!-- ======================================================================= -->
+  <!-- 16. INSTANCIACIÓN DE LAS CUATRO PATAS DE ATERRIZAJE                     -->
+  <!-- ======================================================================= -->
+
+  <!--
+    Se crean cuatro patas independientes, una en cada esquina inferior del
+    cuerpo central.
+
+    Importante:
+    ==========================================================================-
+    Estas patas son cilindros verticales, no patines horizontales.
+    Por tanto, al visualizar el dron desde abajo o en perspectiva, se verán
+    claramente cuatro apoyos separados.
+  -->
+  <xacro:landing_leg name="front_left"  x="${ leg_x}"  y="${ leg_y}"/>
+  <xacro:landing_leg name="front_right" x="${ leg_x}"  y="${-leg_y}"/>
+  <xacro:landing_leg name="rear_left"   x="${-leg_x}"  y="${ leg_y}"/>
+  <xacro:landing_leg name="rear_right"  x="${-leg_x}"  y="${-leg_y}"/>
 
 </robot>
